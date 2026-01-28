@@ -1,0 +1,41 @@
+# CroweLM Agents Image
+# Contains biotech and research agents for drug discovery
+
+FROM python:3.11-slim
+
+LABEL maintainer="Michael Crowe <michael@crowelogic.com>"
+LABEL org.opencontainers.image.source="https://github.com/MichaelCrowe11/crowelm"
+LABEL org.opencontainers.image.description="CroweLM Biotech AI Agents"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CROWELM_MODEL_URL=http://host.docker.internal:12434/v1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash crowelm
+WORKDIR /app
+
+# Install CroweLM packages
+RUN pip install --upgrade pip && \
+    pip install crowelm-agents crowelm-nims crowelm-pipelines
+
+# Switch to non-root user
+USER crowelm
+
+# Expose default port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import crowelm.agents; print('OK')" || exit 1
+
+# Default: run biotech agent interactively
+CMD ["python", "-m", "crowelm.agents.biotech", "-i"]

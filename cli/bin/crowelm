@@ -1,0 +1,295 @@
+#!/bin/bash
+#
+# CroweLM CLI - Unified command-line interface for CroweLM Biotech AI Platform
+# Crowe Logic AI Infrastructure Management
+#
+
+set -e
+
+# Determine script location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLI_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Banner
+show_banner() {
+    echo -e "${CYAN}"
+    echo "============================================================"
+    echo "       CroweLM - Biotech AI Platform for Drug Discovery"
+    echo "       Docker Model Runner + NVIDIA NIMs + AI Agents"
+    echo "============================================================"
+    echo -e "${NC}"
+}
+
+# Status command
+cmd_status() {
+    echo -e "\n${BLUE}==> Docker Model Runner${NC}"
+    docker model status 2>/dev/null || echo -e "${RED}Not running${NC}"
+
+    echo -e "\n${BLUE}==> Available Models${NC}"
+    docker model list 2>/dev/null || echo "No models"
+
+    echo -e "\n${BLUE}==> Running Containers${NC}"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null | grep -i crowelm || echo "No CroweLM containers"
+
+    echo -e "\n${BLUE}==> MCP Servers${NC}"
+    docker mcp server ls 2>/dev/null | head -20 || echo "MCP not available"
+
+    echo -e "\n${BLUE}==> Environment${NC}"
+    echo "  NVIDIA_API_KEY: ${NVIDIA_API_KEY:+[SET]}"
+    echo "  CROWELM_MODEL_URL: ${CROWELM_MODEL_URL:-http://localhost:12434/v1}"
+}
+
+# Models command
+cmd_models() {
+    case "${1:-list}" in
+        list)
+            docker model list
+            ;;
+        run)
+            shift
+            docker model run "$@"
+            ;;
+        chat)
+            shift
+            MODEL="${1:-crowelogic/crowelogic:v1.0}"
+            docker model run "$MODEL" --chat
+            ;;
+        pull)
+            shift
+            docker model pull "$@"
+            ;;
+        *)
+            echo "Usage: crowelm models [list|run|chat|pull]"
+            echo ""
+            echo "Examples:"
+            echo "  crowelm models list"
+            echo "  crowelm models chat crowelogic/crowelogic:v1.0"
+            ;;
+    esac
+}
+
+# Agent command
+cmd_agent() {
+    case "${1:-help}" in
+        biotech)
+            shift
+            python -m crowelm.agents.biotech "$@"
+            ;;
+        research)
+            shift
+            python -m crowelm.agents.research "$@"
+            ;;
+        *)
+            echo "Usage: crowelm agent [biotech|research] [args]"
+            echo ""
+            echo "Commands:"
+            echo "  biotech     - Run biotech agent (drug discovery)"
+            echo "  research    - Run research agent (literature analysis)"
+            echo ""
+            echo "Examples:"
+            echo "  crowelm agent biotech -i"
+            echo "  crowelm agent biotech --target P15056"
+            echo "  crowelm agent research --topic 'CRISPR drug discovery'"
+            ;;
+    esac
+}
+
+# NVIDIA command
+cmd_nvidia() {
+    case "${1:-help}" in
+        test)
+            python -m crowelm.nims.nvidia --test
+            ;;
+        structure)
+            shift
+            python -m crowelm.nims.nvidia --structure "$1"
+            ;;
+        generate)
+            shift
+            python -m crowelm.nims.nvidia --generate "${1:-10}"
+            ;;
+        chat)
+            shift
+            python -m crowelm.nims.nvidia --chat "$*"
+            ;;
+        pipeline)
+            shift
+            python -m crowelm.pipelines.drug_discovery --target "${1:-P15056}"
+            ;;
+        *)
+            echo "Usage: crowelm nvidia [test|structure|generate|chat|pipeline]"
+            echo ""
+            echo "NVIDIA BioNeMo NIMs Integration"
+            echo ""
+            echo "Commands:"
+            echo "  test                    - Test NVIDIA API connectivity"
+            echo "  structure <sequence>    - Predict protein structure (ESMFold)"
+            echo "  generate [n]            - Generate n molecules (MolMIM)"
+            echo "  chat <question>         - Ask science question (Nemotron)"
+            echo "  pipeline <uniprot_id>   - Run full drug discovery pipeline"
+            echo ""
+            echo "Examples:"
+            echo "  crowelm nvidia test"
+            echo "  crowelm nvidia structure MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFL"
+            echo "  crowelm nvidia generate 10"
+            echo "  crowelm nvidia chat 'What is protein folding?'"
+            echo "  crowelm nvidia pipeline P15056"
+            ;;
+    esac
+}
+
+# Docker command
+cmd_docker() {
+    case "${1:-help}" in
+        up)
+            shift
+            docker compose -f "${CLI_DIR}/../docker/docker-compose.yml" up -d "$@"
+            ;;
+        down)
+            docker compose -f "${CLI_DIR}/../docker/docker-compose.yml" down
+            ;;
+        logs)
+            shift
+            docker compose -f "${CLI_DIR}/../docker/docker-compose.yml" logs -f "$@"
+            ;;
+        build)
+            shift
+            docker compose -f "${CLI_DIR}/../docker/docker-compose.yml" build "$@"
+            ;;
+        *)
+            echo "Usage: crowelm docker [up|down|logs|build]"
+            echo ""
+            echo "Commands:"
+            echo "  up [service]    - Start services"
+            echo "  down            - Stop all services"
+            echo "  logs [service]  - View logs"
+            echo "  build           - Build images"
+            ;;
+    esac
+}
+
+# Train command
+cmd_train() {
+    case "${1:-help}" in
+        mlx)
+            shift
+            python -m crowelm.training.mlx_lora "$@"
+            ;;
+        *)
+            echo "Usage: crowelm train [mlx] [args]"
+            echo ""
+            echo "Commands:"
+            echo "  mlx    - Run MLX LoRA fine-tuning (Apple Silicon)"
+            echo ""
+            echo "Examples:"
+            echo "  crowelm train mlx --model Qwen/Qwen2.5-7B-Instruct --data ~/data"
+            ;;
+    esac
+}
+
+# API command
+cmd_api() {
+    case "${1:-help}" in
+        chat)
+            shift
+            MODEL="${1:-crowelogic/crowelogic:v1.0}"
+            PROMPT="${2:-Hello}"
+            curl -s "http://localhost:12434/v1/chat/completions" \
+                -H "Content-Type: application/json" \
+                -d "{\"model\": \"$MODEL\", \"messages\": [{\"role\": \"user\", \"content\": \"$PROMPT\"}]}" | \
+                python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+            ;;
+        models)
+            curl -s "http://localhost:12434/v1/models" | python3 -m json.tool
+            ;;
+        *)
+            echo "Usage: crowelm api [chat|models]"
+            echo ""
+            echo "Examples:"
+            echo "  crowelm api chat crowelogic/crowelogic:v1.0 'What is DNA?'"
+            echo "  crowelm api models"
+            ;;
+    esac
+}
+
+# Version command
+cmd_version() {
+    echo "crowelm-cli version 0.1.0"
+    echo ""
+    python -c "import crowelm.core; print(f'crowelm-core: {crowelm.core.__version__}')" 2>/dev/null || echo "crowelm-core: not installed"
+}
+
+# Help command
+cmd_help() {
+    show_banner
+    echo "Usage: crowelm <command> [subcommand] [args]"
+    echo ""
+    echo -e "${GREEN}Commands:${NC}"
+    echo "  status              Show overall system status"
+    echo "  models              Manage AI models (list, run, chat)"
+    echo "  agent               Run AI agents (biotech, research)"
+    echo "  nvidia              NVIDIA BioNeMo NIMs (structure, generate, chat, pipeline)"
+    echo "  docker              Manage Docker services (up, down, logs)"
+    echo "  train               Training utilities (mlx)"
+    echo "  api                 Quick API calls"
+    echo "  version             Show version information"
+    echo "  help                Show this help"
+    echo ""
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  crowelm status"
+    echo "  crowelm agent biotech -i"
+    echo "  crowelm nvidia pipeline P15056"
+    echo "  crowelm models chat crowelogic/crowelogic:v1.0"
+    echo ""
+}
+
+# Main
+case "${1:-help}" in
+    status)
+        shift
+        cmd_status "$@"
+        ;;
+    models)
+        shift
+        cmd_models "$@"
+        ;;
+    agent)
+        shift
+        cmd_agent "$@"
+        ;;
+    nvidia)
+        shift
+        cmd_nvidia "$@"
+        ;;
+    docker)
+        shift
+        cmd_docker "$@"
+        ;;
+    train)
+        shift
+        cmd_train "$@"
+        ;;
+    api)
+        shift
+        cmd_api "$@"
+        ;;
+    version|--version|-v)
+        cmd_version
+        ;;
+    help|--help|-h)
+        cmd_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'crowelm help' for usage"
+        exit 1
+        ;;
+esac

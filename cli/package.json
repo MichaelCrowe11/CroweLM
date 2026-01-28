@@ -1,0 +1,44 @@
+{
+  "name": "@crowe-logic/crowelm-cli",
+  "version": "0.1.0",
+  "description": "CLI for CroweLM Biotech AI Platform",
+  "author": "Michael Crowe <michael@crowelogic.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MichaelCrowe11/crowelm.git"
+  },
+  "homepage": "https://github.com/MichaelCrowe11/crowelm#readme",
+  "bugs": {
+    "url": "https://github.com/MichaelCrowe11/crowelm/issues"
+  },
+  "keywords": [
+    "crowelm",
+    "biotech",
+    "drug-discovery",
+    "ai",
+    "cli",
+    "docker",
+    "nvidia-nims"
+  ],
+  "bin": {
+    "crowelm": "./bin/crowelm",
+    "ai-cli": "./bin/crowelm"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js",
+    "test": "echo \"No tests yet\""
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ]
+}

@@ -1,0 +1,33 @@
+# CroweLM Base Image
+# Python 3.11 with common dependencies for all CroweLM services
+
+FROM python:3.11-slim
+
+LABEL maintainer="Michael Crowe <michael@crowelogic.com>"
+LABEL org.opencontainers.image.source="https://github.com/MichaelCrowe11/crowelm"
+LABEL org.opencontainers.image.description="CroweLM Biotech AI Platform - Base Image"
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash crowelm
+WORKDIR /app
+
+# Install base Python packages
+RUN pip install --upgrade pip setuptools wheel
+
+# Switch to non-root user
+USER crowelm
+
+# Default command
+CMD ["python", "--version"]

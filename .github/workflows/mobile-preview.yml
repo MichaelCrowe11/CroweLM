@@ -1,0 +1,48 @@
+name: Mobile Preview
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+
+jobs:
+  preview:
+    name: Build Preview
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: |
+          cd mobile
+          npm install
+
+      - name: Build preview
+        run: |
+          cd mobile
+          eas build --platform all --profile preview --non-interactive
+        continue-on-error: true
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '📱 Mobile preview build started! Check the [EAS dashboard](https://expo.dev) for build status.'
+            })
