@@ -23,10 +23,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash crowelm
 WORKDIR /app
 
-# Install CroweLM packages with API dependencies
+# Copy and install local packages
+COPY packages/crowelm-core/dist/*.whl /tmp/
+COPY packages/crowelm-agents/dist/*.whl /tmp/
+COPY packages/crowelm-nims/dist/*.whl /tmp/
+COPY packages/crowelm-pipelines/dist/*.whl /tmp/
+
 RUN pip install --upgrade pip && \
-    pip install crowelm-agents crowelm-nims crowelm-pipelines \
-    fastapi uvicorn[standard]
+    pip install /tmp/*.whl fastapi uvicorn[standard] && \
+    rm /tmp/*.whl
 
 # Copy API server code
 COPY --chown=crowelm:crowelm api/ ./api/
