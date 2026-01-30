@@ -1,160 +1,309 @@
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  useColorScheme,
+  ScrollView,
+  RefreshControl,
+  Pressable,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
-interface QuickActionProps {
-  icon: keyof typeof Ionicons.glyphMap;
+import { Card, StatusBadge, Button } from '../../components/ui';
+import { colors, typography, spacing, borderRadius, shadows } from '../../theme';
+import { api } from '../../services/api';
+import { useOfflineCache } from '../../hooks/useOfflineCache';
+
+interface QuickAction {
+  id: string;
   title: string;
   description: string;
-  href: string;
+  icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  gradient: [string, string];
+  route: string;
 }
 
-function QuickAction({ icon, title, description, href, color }: QuickActionProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-
-  return (
-    <Link href={href as any} asChild>
-      <TouchableOpacity
-        style={[
-          styles.actionCard,
-          { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
-        ]}
-      >
-        <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-          <Ionicons name={icon} size={24} color={color} />
-        </View>
-        <Text style={[styles.actionTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-          {title}
-        </Text>
-        <Text style={[styles.actionDescription, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          {description}
-        </Text>
-      </TouchableOpacity>
-    </Link>
-  );
+interface ActivityItem {
+  id: string;
+  type: 'analysis' | 'molecule' | 'pipeline' | 'error';
+  title: string;
+  timestamp: string;
+  status: 'success' | 'pending' | 'error';
 }
+
+const quickActions: QuickAction[] = [
+  {
+    id: 'target',
+    title: 'Target Analysis',
+    description: 'Analyze drug targets',
+    icon: 'flask',
+    color: colors.primary[500],
+    gradient: [colors.primary[600], colors.primary[800]],
+    route: '/target/new',
+  },
+  {
+    id: 'chat',
+    title: 'Research Chat',
+    description: 'Ask biotech questions',
+    icon: 'chatbubbles',
+    color: colors.secondary[500],
+    gradient: [colors.secondary[500], colors.secondary[700]],
+    route: '/(tabs)/research',
+  },
+  {
+    id: 'pipeline',
+    title: 'Drug Pipeline',
+    description: 'Run discovery workflow',
+    icon: 'git-branch',
+    color: colors.accent[500],
+    gradient: [colors.accent[500], colors.accent[700]],
+    route: '/(tabs)/pipeline',
+  },
+  {
+    id: 'molecules',
+    title: 'Molecules',
+    description: 'Generate compounds',
+    icon: 'cube',
+    color: colors.status.warning,
+    gradient: ['#f59e0b', '#d97706'],
+    route: '/molecule/new',
+  },
+];
+
+const mockActivity: ActivityItem[] = [
+  {
+    id: '1',
+    type: 'analysis',
+    title: 'BRAF Analysis Complete',
+    timestamp: '2 hours ago',
+    status: 'success',
+  },
+  {
+    id: '2',
+    type: 'molecule',
+    title: '10 molecules generated',
+    timestamp: '5 hours ago',
+    status: 'success',
+  },
+  {
+    id: '3',
+    type: 'pipeline',
+    title: 'EGFR pipeline running',
+    timestamp: '1 day ago',
+    status: 'pending',
+  },
+];
 
 export default function DashboardScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [isApiConnected, setIsApiConnected] = React.useState(true);
+
+  const statusPulse = useSharedValue(1);
+
+  useEffect(() => {
+    statusPulse.value = withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: 1000 }),
+        withTiming(1, { duration: 1000 })
+      ),
+      -1,
+      false
+    );
+
+    checkApiConnection();
+  }, []);
+
+  const checkApiConnection = async () => {
+    const connected = await api.healthCheck();
+    setIsApiConnected(connected);
+  };
+
+  const {
+    data: activity,
+    isStale,
+    isOffline,
+    refresh: refreshActivity,
+  } = useOfflineCache<ActivityItem[]>(
+    'recent_activity',
+    async () => mockActivity,
+    { ttl: 60000 }
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await Promise.all([checkApiConnection(), refreshActivity()]);
+    setRefreshing(false);
+  };
+
+  const handleQuickAction = (action: QuickAction) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push(action.route as any);
+  };
+
+  const getActivityIcon = (type: ActivityItem['type']): keyof typeof Ionicons.glyphMap => {
+    switch (type) {
+      case 'analysis': return 'checkmark-circle';
+      case 'molecule': return 'flask';
+      case 'pipeline': return 'sync';
+      case 'error': return 'alert-circle';
+      default: return 'information-circle';
+    }
+  };
+
+  const getActivityColor = (status: ActivityItem['status']): string => {
+    switch (status) {
+      case 'success': return colors.status.success;
+      case 'pending': return colors.status.warning;
+      case 'error': return colors.status.error;
+      default: return colors.text.secondary;
+    }
+  };
 
   return (
     <ScrollView
-      style={[styles.container, { backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}
-      contentContainerStyle={styles.content}
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary[500]}
+          colors={[colors.primary[500]]}
+        />
+      }
     >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: isDark ? '#f1f5f9' : '#0f172a' }]}>
-          CroweLM Biotech
-        </Text>
-        <Text style={[styles.subtitle, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-          AI-Powered Drug Discovery Platform
-        </Text>
-      </View>
+      <Animated.View entering={FadeInDown.duration(600)} style={styles.header}>
+        <Text style={styles.title}>CroweLM Biotech</Text>
+        <Text style={styles.subtitle}>AI-Powered Drug Discovery Platform</Text>
 
-      {/* Status Card */}
-      <View
-        style={[
-          styles.statusCard,
-          { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
-        ]}
-      >
         <View style={styles.statusRow}>
-          <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: '#22c55e' }]} />
-            <Text style={[styles.statusText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-              API Connected
-            </Text>
-          </View>
-          <View style={styles.statusItem}>
-            <View style={[styles.statusDot, { backgroundColor: '#3b82f6' }]} />
-            <Text style={[styles.statusText, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-              NVIDIA NIMs
-            </Text>
-          </View>
+          <StatusBadge
+            status={isApiConnected ? 'success' : 'error'}
+            label={isApiConnected ? 'API Connected' : 'API Offline'}
+            pulse={isApiConnected}
+          />
+          <View style={styles.statusSpacer} />
+          <StatusBadge status="info" label="NVIDIA NIMs" pulse />
+          {isOffline && (
+            <>
+              <View style={styles.statusSpacer} />
+              <StatusBadge status="warning" label="Offline Mode" />
+            </>
+          )}
         </View>
-      </View>
+      </Animated.View>
 
       {/* Quick Actions */}
-      <Text style={[styles.sectionTitle, { color: isDark ? '#f1f5f9' : '#0f172a' }]}>
-        Quick Actions
-      </Text>
-
-      <View style={styles.actionsGrid}>
-        <QuickAction
-          icon="flask-outline"
-          title="Target Analysis"
-          description="Analyze drug targets"
-          href="/target/P15056"
-          color="#8b5cf6"
-        />
-        <QuickAction
-          icon="chatbubble-outline"
-          title="Research Chat"
-          description="Ask biotech questions"
-          href="/(tabs)/research"
-          color="#3b82f6"
-        />
-        <QuickAction
-          icon="git-branch-outline"
-          title="Drug Pipeline"
-          description="Run discovery workflow"
-          href="/(tabs)/pipeline"
-          color="#22c55e"
-        />
-        <QuickAction
-          icon="cube-outline"
-          title="Molecules"
-          description="Generate compounds"
-          href="/molecule/CCO"
-          color="#f59e0b"
-        />
-      </View>
+      <Animated.View entering={FadeInDown.delay(200).duration(600)}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <View style={styles.actionsGrid}>
+          {quickActions.map((action, index) => (
+            <Animated.View
+              key={action.id}
+              entering={FadeInRight.delay(300 + index * 100).duration(400)}
+              style={styles.actionWrapper}
+            >
+              <Pressable
+                onPress={() => handleQuickAction(action)}
+                style={({ pressed }) => [
+                  styles.actionCard,
+                  pressed && styles.actionCardPressed,
+                ]}
+              >
+                <LinearGradient
+                  colors={action.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.actionGradient}
+                >
+                  <View style={styles.actionIconContainer}>
+                    <Ionicons name={action.icon} size={28} color={colors.text.primary} />
+                  </View>
+                  <Text style={styles.actionTitle}>{action.title}</Text>
+                  <Text style={styles.actionDescription}>{action.description}</Text>
+                </LinearGradient>
+              </Pressable>
+            </Animated.View>
+          ))}
+        </View>
+      </Animated.View>
 
       {/* Recent Activity */}
-      <Text style={[styles.sectionTitle, { color: isDark ? '#f1f5f9' : '#0f172a' }]}>
-        Recent Activity
-      </Text>
+      <Animated.View entering={FadeInDown.delay(600).duration(600)}>
+        <Text style={styles.sectionTitle}>Recent Activity</Text>
+        <Card variant="elevated" padding={0} style={styles.activityCard}>
+          {(activity || mockActivity).map((item, index) => (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                styles.activityItem,
+                index < (activity || mockActivity).length - 1 && styles.activityItemBorder,
+                pressed && styles.activityItemPressed,
+              ]}
+              onPress={() => Haptics.selectionAsync()}
+            >
+              <View
+                style={[
+                  styles.activityIconContainer,
+                  { backgroundColor: `${getActivityColor(item.status)}20` },
+                ]}
+              >
+                <Ionicons
+                  name={getActivityIcon(item.type)}
+                  size={20}
+                  color={getActivityColor(item.status)}
+                />
+              </View>
+              <View style={styles.activityContent}>
+                <Text style={styles.activityTitle}>{item.title}</Text>
+                <Text style={styles.activityTimestamp}>{item.timestamp}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
+            </Pressable>
+          ))}
+        </Card>
+      </Animated.View>
 
-      <View
-        style={[
-          styles.activityCard,
-          { backgroundColor: isDark ? '#1e293b' : '#ffffff' },
-        ]}
-      >
-        <View style={styles.activityItem}>
-          <Ionicons name="checkmark-circle" size={20} color="#22c55e" />
-          <View style={styles.activityContent}>
-            <Text style={[styles.activityTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-              BRAF Analysis Complete
-            </Text>
-            <Text style={[styles.activityTime, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-              2 hours ago
-            </Text>
-          </View>
-        </View>
-        <View style={styles.activityItem}>
-          <Ionicons name="flask" size={20} color="#8b5cf6" />
-          <View style={styles.activityContent}>
-            <Text style={[styles.activityTitle, { color: isDark ? '#f1f5f9' : '#1e293b' }]}>
-              10 molecules generated
-            </Text>
-            <Text style={[styles.activityTime, { color: isDark ? '#94a3b8' : '#64748b' }]}>
-              5 hours ago
-            </Text>
-          </View>
-        </View>
-      </View>
+      {/* CTA Section */}
+      <Animated.View entering={FadeInDown.delay(800).duration(600)} style={styles.ctaSection}>
+        <LinearGradient
+          colors={[colors.primary[900], colors.accent[900]]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.ctaGradient}
+        >
+          <Text style={styles.ctaTitle}>Ready to accelerate drug discovery?</Text>
+          <Text style={styles.ctaDescription}>
+            Start analyzing targets and generating novel molecules with AI
+          </Text>
+          <Button
+            title="Start New Analysis"
+            variant="primary"
+            size="lg"
+            onPress={() => router.push('/target/new' as any)}
+            icon={<Ionicons name="arrow-forward" size={20} color={colors.text.primary} />}
+            iconPosition="right"
+            style={styles.ctaButton}
+          />
+        </LinearGradient>
+      </Animated.View>
+
+      <View style={styles.footer} />
     </ScrollView>
   );
 }
@@ -162,105 +311,146 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background.primary,
   },
-  content: {
-    padding: 16,
-    paddingBottom: 32,
+  contentContainer: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[6],
   },
   header: {
-    marginBottom: 24,
+    marginBottom: spacing[6],
   },
   title: {
-    fontSize: 28,
+    fontSize: typography.sizes['4xl'],
     fontWeight: '700',
+    color: colors.text.primary,
+    letterSpacing: typography.letterSpacing.tight,
   },
   subtitle: {
-    fontSize: 16,
-    marginTop: 4,
-  },
-  statusCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    fontSize: typography.sizes.md,
+    color: colors.text.secondary,
+    marginTop: spacing[1],
+    marginBottom: spacing[4],
   },
   statusRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statusItem: {
-    flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '500',
+  statusSpacer: {
+    width: spacing[2],
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: typography.sizes.xl,
     fontWeight: '600',
-    marginBottom: 12,
+    color: colors.text.primary,
+    marginBottom: spacing[4],
   },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -6,
-    marginBottom: 24,
+    marginHorizontal: -spacing[2],
+    marginBottom: spacing[6],
+  },
+  actionWrapper: {
+    width: '50%',
+    padding: spacing[2],
   },
   actionCard: {
-    width: '50%',
-    padding: 6,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.md,
   },
-  iconContainer: {
+  actionCardPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  actionGradient: {
+    padding: spacing[4],
+    minHeight: 140,
+  },
+  actionIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing[3],
   },
   actionTitle: {
-    fontSize: 14,
+    fontSize: typography.sizes.md,
     fontWeight: '600',
-    marginBottom: 2,
+    color: colors.text.primary,
+    marginBottom: spacing[1],
   },
   actionDescription: {
-    fontSize: 12,
+    fontSize: typography.sizes.sm,
+    color: 'rgba(255, 255, 255, 0.8)',
   },
   activityCard: {
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    marginBottom: spacing[6],
   },
   activityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    padding: spacing[4],
+  },
+  activityItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.dark,
+  },
+  activityItemPressed: {
+    backgroundColor: colors.background.tertiary,
+  },
+  activityIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing[3],
   },
   activityContent: {
-    marginLeft: 12,
     flex: 1,
   },
   activityTitle: {
-    fontSize: 14,
+    fontSize: typography.sizes.base,
     fontWeight: '500',
+    color: colors.text.primary,
+    marginBottom: spacing[1],
   },
-  activityTime: {
-    fontSize: 12,
-    marginTop: 2,
+  activityTimestamp: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.tertiary,
+  },
+  ctaSection: {
+    marginBottom: spacing[6],
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...shadows.lg,
+  },
+  ctaGradient: {
+    padding: spacing[6],
+    alignItems: 'center',
+  },
+  ctaTitle: {
+    fontSize: typography.sizes['2xl'],
+    fontWeight: '700',
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: spacing[2],
+  },
+  ctaDescription: {
+    fontSize: typography.sizes.base,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: spacing[5],
+  },
+  ctaButton: {
+    minWidth: 200,
+  },
+  footer: {
+    height: spacing[10],
   },
 });
